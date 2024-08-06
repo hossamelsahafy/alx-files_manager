@@ -1,3 +1,4 @@
+import { ObjectId } from 'mongodb';
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 import path from 'path';
@@ -33,7 +34,7 @@ class FilesController {
     }
 
     if (parentId) {
-      const parentFile = await dbClient.db.collection('files').findOne({ _id: new dbClient.ObjectId(parentId) });
+      const parentFile = await dbClient.db.collection('files').findOne({ _id: new ObjectId(parentId) });
 
       if (!parentFile) {
         return res.status(400).json({ error: 'Parent not found' });
@@ -67,6 +68,63 @@ class FilesController {
     const result = await dbClient.db.collection('files').insertOne(fileDoc);
 
     return res.status(201).json({ id: result.insertedId, ...fileDoc });
+  }
+
+  static async getShow(req, res) {
+    const token = req.headers['x-token'];
+    const { id } = req.params;
+
+    if (!token) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    // Retrieve user ID from Redis
+    const tokenKey = `auth_${token}`;
+    const userId = await redisClient.get(tokenKey);
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    // Retrieve file document
+    const file = await dbClient.db.collection('files').findOne({ _id: new ObjectId(id), userId });
+
+    if (!file) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+
+    return res.status(200).json(file);
+  }
+  static async getIndex(req, res) {
+    const token = req.headers['x-token'];
+    const { parentId = 0, page = 0 } = req.query;
+    const pageSize = 20;
+    const skip = page * pageSize;
+  
+    if (!token) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+  
+    // Retrieve user ID from Redis
+    const tokenKey = `auth_${token}`;
+    const userId = await redisClient.get(tokenKey);
+  
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+  
+    console.log(`User ID: ${userId}`); // Debugging line
+  
+    // Retrieve file documents with pagination
+    const files = await dbClient.db.collection('files')
+      .find({ userId })
+      .skip(skip)
+      .limit(pageSize)
+      .toArray();
+  
+    console.log(`Files Retrieved: ${JSON.stringify(files)}`); // Debugging line
+  
+    return res.status(200).json(files);
   }
 }
 
